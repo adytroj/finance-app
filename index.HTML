@@ -1,0 +1,1110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Expense Tracker — Standalone</title>
+<style>
+  :root{
+    --bg:#0b0f14;
+    --panel:#0f1720;
+    --muted:#9aa6b2;
+    --accent:#21c98a; /* green for income */
+    --danger:#ff6b6b; /* red for expense */
+    --info:#4aa3ff;   /* blue for transfer */
+    --glass: rgba(255,255,255,0.03);
+    --card:#0c1116;
+    --accent-2:#52c997;
+    --successText: #c7f6e6;
+    --radius:10px;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    -webkit-font-smoothing:antialiased;
+    color:#e6eef3;
+  }
+  html,body{height:100%; margin:0; background:linear-gradient(180deg,#05060a 0%, var(--bg) 100%); }
+  .app {
+    max-width:1100px;
+    margin:18px auto;
+    padding:18px;
+    display:grid;
+    grid-template-columns: 360px 1fr;
+    gap:18px;
+  }
+
+  /* PIN overlay */
+  .pin-overlay {
+    position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+    background: rgba(4,6,10,0.85); z-index:9999; padding:20px;
+  }
+  .pin-box {
+    width:420px; background:var(--panel); border-radius:14px; padding:28px; box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+  }
+  .pin-box h2{margin:0 0 8px 0; font-size:20px}
+  .pin-row{display:flex; gap:8px; margin-top:14px}
+  .pin-row input{flex:1; padding:12px 14px; font-size:20px; background:var(--card); border:1px solid rgba(255,255,255,0.04); border-radius:8px; color:var(--successText)}
+  .btn { background:var(--accent-2); color:#052226; padding:10px 12px; border-radius:10px; border:none; font-weight:700; cursor:pointer; box-shadow: 0 6px 18px rgba(16,62,55,0.12)}
+  .btn:focus{outline:3px solid rgba(82,201,151,0.14)}
+  .ghost { background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.04) }
+  .small { padding:6px 10px; font-size:14px; border-radius:8px }
+  h3{margin:0 0 8px 0}
+
+  /* Left column - dashboard */
+  .panel { background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); padding:14px; border-radius:var(--radius); box-shadow:inset 0 1px 0 rgba(255,255,255,0.02) }
+  .balance { display:flex; flex-direction:column; gap:10px; }
+  .acc-row { display:flex; justify-content:space-between; align-items:center; padding:10px; border-radius:10px; background:var(--glass); }
+  .acc-name{font-size:14px; color:var(--muted)}
+  .acc-amt{font-size:18px; font-weight:700}
+  .quick-actions { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap }
+
+  /* Upcoming payments compact */
+  .upcoming { margin-top:12px; padding:10px; border-radius:10px; background:linear-gradient(180deg, rgba(255,255,255,0.01), transparent) }
+  .upcoming h4{margin:0 0 8px 0}
+  .up-row { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .up-small{font-size:12px;color:var(--muted)}
+
+  /* Right column - transactions list */
+  .top-actions { display:flex; justify-content:space-between; gap:10px; align-items:center; margin-bottom:10px }
+  .search { background:var(--card); padding:8px; border-radius:10px; display:flex; gap:8px; align-items:center; flex:1}
+  .search input{background:transparent;border:0; outline:none; color:var(--muted); width:100%}
+  .tx-list { display:flex; flex-direction:column; gap:10px; margin-top:6px; max-height:72vh; overflow:auto; padding-right:6px }
+
+  .tx-card {
+    display:flex; justify-content:space-between; align-items:center; gap:12px;
+    background:linear-gradient(180deg, rgba(255,255,255,0.015), transparent);
+    padding:10px; border-radius:10px; border-left:6px solid rgba(255,255,255,0.02);
+  }
+  .tx-left{display:flex; gap:10px; align-items:center}
+  .tx-thumb {width:44px; height:44px; border-radius:50%; background:linear-gradient(135deg,#0a0f13,#091214); display:flex; align-items:center; justify-content:center; font-weight:700}
+  .tx-info { display:flex; flex-direction:column }
+  .tx-cat{font-size:13px; color:var(--muted)}
+  .tx-desc{font-size:14px}
+  .tx-right{display:flex; gap:12px; align-items:center}
+
+  .amt { font-weight:800; font-size:16px }
+  .amt.income{ color:var(--accent) }
+  .amt.expense{ color:var(--danger) }
+  .amt.transfer{ color:var(--info) }
+
+  .tiny{font-size:12px;color:var(--muted)}
+
+  /* modal / side panel */
+  .overlay { position:fixed; inset:0; background:rgba(2,4,7,0.6); display:none; z-index:999; align-items:center; justify-content:center }
+  .side {
+    width:520px; max-width:95%;
+    background:var(--panel); padding:18px; border-radius:12px; box-shadow:0 18px 50px rgba(0,0,0,0.6)
+  }
+  .row { display:flex; gap:8px; align-items:center }
+  label{font-size:13px;color:var(--muted); margin-bottom:6px; display:block}
+  input[type="text"], input[type="number"], select, textarea, input[type="date"]{
+    width:100%; padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.04); background:var(--card); color:var(--successText);
+  }
+  textarea{ min-height:90px; resize:vertical }
+  .field{ margin-bottom:10px }
+
+  /* image circular thumbnails */
+  .thumb-small{ width:38px; height:38px; border-radius:50%; object-fit:cover; border:2px solid rgba(255,255,255,0.03) }
+
+  .manage-cat-list{ display:flex; flex-direction:column; gap:6px; max-height:120px; overflow:auto; padding:6px; margin-bottom:6px }
+  .cat-item{ display:flex; justify-content:space-between; align-items:center; padding:8px; border-radius:8px; background:rgba(255,255,255,0.01) }
+
+  /* responsive */
+  @media (max-width:1000px){
+    .app{grid-template-columns:1fr; padding:12px}
+    .side{ width:95% }
+  }
+
+  /* focus for keyboard */
+  button:focus, input:focus, select:focus, .tx-card:focus{ outline: 3px solid rgba(82,201,151,0.14); outline-offset:2px }
+  .muted{ color:var(--muted) }
+
+  /* footer small actions */
+  .footer-actions{ display:flex; gap:8px; margin-top:12px; align-items:center; justify-content:space-between }
+</style>
+</head>
+<body>
+
+<div class="pin-overlay" id="pinOverlay" role="dialog" aria-modal="true">
+  <div class="pin-box" role="document">
+    <h2>Enter PIN to unlock</h2>
+    <p class="muted">Enter 4-digit PIN to access the Expense Tracker.</p>
+    <div class="pin-row" style="margin-top:16px">
+      <input id="pinInput" inputmode="numeric" maxlength="6" aria-label="PIN input" autofocus />
+      <button class="btn" id="unlockBtn">Unlock</button>
+      <button class="btn ghost small" id="resetSampleBtn" title="Reset data to sample">Reset</button>
+    </div>
+    <p class="muted" style="margin-top:10px;font-size:13px">Default PIN: <strong>7412</strong></p>
+  </div>
+</div>
+
+<div class="app" id="app" aria-hidden="true">
+
+  <!-- LEFT DASHBOARD -->
+  <div class="panel" aria-label="Dashboard Left Column">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <h3>My Wallet</h3>
+        <div class="muted" style="font-size:13px">Currency: <strong>TND</strong></div>
+      </div>
+      <div>
+        <button class="btn small" id="openRecurring">Recurring</button>
+        <button class="btn small ghost" id="settingsBtn" title="Export / Import">Settings</button>
+      </div>
+    </div>
+
+    <div class="balance" style="margin-top:12px">
+      <div class="acc-row" id="bankRow">
+        <div><div class="acc-name">Bank Account</div><div class="tiny">Used for incomes</div></div>
+        <div class="acc-amt" id="bankBalance">0 TND</div>
+      </div>
+      <div class="acc-row" id="cashRow">
+        <div><div class="acc-name">Cash in Pocket</div><div class="tiny">Used for daily expenses</div></div>
+        <div class="acc-amt" id="cashBalance">0 TND</div>
+      </div>
+    </div>
+
+    <div class="quick-actions" style="margin-top:12px">
+      <button class="btn" id="addExpenseBtn">Add Expense</button>
+      <button class="btn" id="addIncomeBtn">Withdraw/Transfer</button>
+      <button class="btn ghost" id="addIncomeAltBtn">Add Income</button>
+      <button class="btn ghost" id="addTransferBtn">Transfer (bank→cash)</button>
+    </div>
+
+    <div class="upcoming" aria-live="polite" style="margin-top:14px">
+      <h4>Upcoming Payments <span id="upTotals" class="up-small"></span></h4>
+      <div class="up-row"><div class="tiny">This month</div><div id="upThis">0 TND</div></div>
+      <div class="up-row" style="margin-top:6px"><div class="tiny">Next month</div><div id="upNext">0 TND</div></div>
+      <div class="up-row" style="margin-top:6px"><div class="tiny">Month after</div><div id="upAfter">0 TND</div></div>
+    </div>
+
+    <div style="margin-top:12px">
+      <h4>Quick Stats</h4>
+      <div class="tiny">Monthly savings: <strong id="monthlySavings">0 TND</strong></div>
+      <div class="tiny">Last 30 days spending: <strong id="last30">0 TND</strong></div>
+      <div class="tiny" id="warningsArea"></div>
+    </div>
+
+    <div style="margin-top:14px" class="footer-actions">
+      <div>
+        <button class="btn small ghost" id="manageCatsBtn">Manage Categories</button>
+      </div>
+      <div>
+        <button class="btn small ghost" id="exportBtn">Export</button>
+        <button class="btn small ghost" id="importBtn">Import</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT TRANSACTIONS -->
+  <div>
+    <div class="top-actions" role="region" aria-label="Top actions">
+      <div class="search" role="search">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="opacity:0.6"><path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <input id="searchInput" placeholder="Search transactions, category or description..." aria-label="Search transactions" />
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn small" id="filterBtn">Filters</button>
+        <button class="btn small ghost" id="newTxBtn">New</button>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:8px">
+      <h3>Transactions</h3>
+      <div class="muted tiny" style="margin-bottom:8px">Click a transaction to edit. Use the thumbnail to preview receipts.</div>
+      <div class="tx-list" id="txList" tabindex="0" aria-live="polite"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Overlay / side panel for forms -->
+<div class="overlay" id="overlay" role="dialog" aria-hidden="true">
+  <div class="side" id="sidePanel" role="document">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h3 id="sideTitle">New Transaction</h3>
+      <div style="display:flex; gap:6px;">
+        <button class="small ghost" id="sideCancel">Cancel (Esc)</button>
+        <button class="btn small" id="sideSave">Save</button>
+      </div>
+    </div>
+
+    <form id="txForm" style="margin-top:12px">
+      <div class="field">
+        <label>Date</label>
+        <input type="date" id="txDate" />
+      </div>
+
+      <div class="field">
+        <label>Type</label>
+        <select id="txType" aria-label="Transaction type">
+          <option value="expense">Expense</option>
+          <option value="income">Income</option>
+          <option value="transfer">Transfer/Withdraw</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Amount (TND)</label>
+        <input type="number" step="0.01" id="txAmount" placeholder="0.00" />
+      </div>
+
+      <div class="field">
+        <label>Category</label>
+        <select id="txCategory"></select>
+      </div>
+
+      <div class="field">
+        <label>From Account</label>
+        <select id="txFrom"></select>
+      </div>
+
+      <div class="field">
+        <label>To Account (optional)</label>
+        <select id="txTo"></select>
+      </div>
+
+      <div class="field">
+        <label>Description</label>
+        <input type="text" id="txDesc" placeholder="Notes or explanation" />
+      </div>
+
+      <div class="field">
+        <label>Receipt image</label>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input type="file" id="txImage" accept="image/*" />
+          <img id="txImagePreview" class="thumb-small" style="display:none"/>
+          <button type="button" class="ghost small" id="removeImageBtn" style="display:none">Remove</button>
+        </div>
+      </div>
+
+      <div style="margin-top:12px" class="muted tiny">Tip: Expenses default to <strong>Cash in Pocket</strong></div>
+
+    </form>
+  </div>
+</div>
+
+<!-- Categories manager modal -->
+<div class="overlay" id="catOverlay" role="dialog" aria-hidden="true">
+  <div class="side" style="width:420px">
+    <div style="display:flex;justify-content:space-between; align-items:center">
+      <h3>Manage Categories</h3>
+      <button class="small ghost" id="closeCat">Close</button>
+    </div>
+    <div style="margin-top:12px">
+      <label>Add category (emoji allowed)</label>
+      <div style="display:flex; gap:8px">
+        <input id="newCatInput" placeholder="e.g. 🍔 Food" />
+        <button class="btn small" id="addCatBtn">Add Category</button>
+      </div>
+      <div class="manage-cat-list" id="catList" style="margin-top:10px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Recurring modal -->
+<div class="overlay" id="recOverlay" role="dialog" aria-hidden="true">
+  <div class="side" style="width:680px">
+    <div style="display:flex; justify-content:space-between; align-items:center">
+      <h3>Recurring Payments</h3>
+      <div>
+        <button class="small ghost" id="newRecurringBtn">+ New</button>
+        <button class="small ghost" id="closeRec">Close</button>
+      </div>
+    </div>
+    <div style="margin-top:10px; display:flex; gap:12px;">
+      <div style="flex:1">
+        <div id="recList" style="max-height:360px; overflow:auto; padding-right:6px"></div>
+      </div>
+      <div style="width:320px">
+        <div id="recFormArea"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Settings overlay (export/import) -->
+<div class="overlay" id="settingsOverlay" role="dialog" aria-hidden="true">
+  <div class="side" style="width:520px">
+    <div style="display:flex; justify-content:space-between; align-items:center">
+      <h3>Settings & Data</h3>
+      <button class="small ghost" id="closeSettings">Close</button>
+    </div>
+    <div style="margin-top:10px">
+      <div class="field">
+        <label>Export data (JSON)</label>
+        <textarea id="exportArea" style="min-height:120px"></textarea>
+        <div style="display:flex; gap:8px; margin-top:8px">
+          <button class="btn" id="doExport">Copy Export</button>
+          <button class="btn ghost" id="downloadExport">Download</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Import data (paste JSON)</label>
+        <textarea id="importArea" style="min-height:120px"></textarea>
+        <div style="display:flex; gap:8px; margin-top:8px">
+          <button class="btn" id="doImport">Import</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Reset app to sample data</label>
+        <div><button class="btn ghost" id="resetBtn">Reset to sample</button></div>
+      </div>
+      <div style="margin-top:6px" class="muted tiny">To sync between devices: export and import JSON.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+/*
+  Expense Tracker Standalone
+  - localStorage persistence
+  - images stored as base64
+  - PIN lock (7412)
+  - Categories management
+  - Recurring payments manager
+  - Keyboard accessibility (Enter, Escape)
+*/
+
+const STORAGE_KEY = 'expenseApp_v1';
+const PIN_CODE = '7412';
+
+const defaultData = {
+  accounts: {
+    bank: {name:'Bank Account', balance: 1500},
+    cash: {name:'Cash in Pocket', balance: 200}
+  },
+  categories: ['Gasoline', 'Kids Soccer', 'Rent', 'Internet Bill', 'Car Insurance', 'Food', 'Others'],
+  transactions: [
+    // sample
+    {id: genId(), date: todayStr(), type:'expense', category:'Gasoline', desc:'Filled 20 DT gas', amount:-20, from:'Cash in Pocket', to:'', receipt:'', created:Date.now()},
+    {id: genId(), date: todayStr(), type:'transfer', category:'Transfer', desc:'ATM withdraw', amount:200, from:'Bank Account', to:'Cash in Pocket', receipt:'', created:Date.now()},
+    {id: genId(), date: todayStr(), type:'income', category:'Salary', desc:'Monthly salary', amount:1500, from:'', to:'Bank Account', receipt:'', created:Date.now()},
+  ],
+  recurring: [
+    {id: genId(), name:'Kids Soccer', amount:50, category:'Kids Soccer', freqDays:30, nextDue: datePlusDays(todayStr(),0), notes:''},
+    {id: genId(), name:'Internet Bill', amount:90, category:'Internet Bill', freqDays:90, nextDue: datePlusDays(todayStr(),0), notes:''},
+    {id: genId(), name:'Car Insurance', amount:300, category:'Car Insurance', freqDays:180, nextDue: datePlusDays(todayStr(),0), notes:''},
+  ],
+  settings: {
+    currency: 'TND'
+  }
+};
+
+// ---------- Utilities ----------
+function genId(){ return 'id_'+Math.random().toString(36).slice(2,9) }
+function todayStr(){ const d=new Date(); return d.toISOString().slice(0,10) }
+function datePlusDays(dStr, days){ const d=new Date(dStr); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10) }
+function parseDate(dStr){ return new Date(dStr+'T00:00:00') }
+function fmtMoney(x){
+  const sign = x < 0 ? '-' : '+';
+  const v = Math.abs(Number(x)).toFixed(2);
+  return (x<0?'-':'') + v + ' TND';
+}
+function clamp(n, min, max){ return Math.max(min, Math.min(max, n)); }
+
+// ------------ Storage -------------
+function loadData(){
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if(!raw) {
+    saveData(defaultData);
+    return JSON.parse(JSON.stringify(defaultData));
+  }
+  try {
+    return JSON.parse(raw);
+  } catch(e){
+    console.error('storage parse err',e);
+    saveData(defaultData);
+    return JSON.parse(JSON.stringify(defaultData));
+  }
+}
+function saveData(data){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+// ------------ App State -------------
+let data = loadData();
+let editingTx = null;
+let currentUserUnlocked = false;
+
+// ------------ Elements -------------
+const pinOverlay = document.getElementById('pinOverlay');
+const pinInput = document.getElementById('pinInput');
+const unlockBtn = document.getElementById('unlockBtn');
+const resetSampleBtn = document.getElementById('resetSampleBtn');
+
+const appContainer = document.getElementById('app');
+const bankBalanceEl = document.getElementById('bankBalance');
+const cashBalanceEl = document.getElementById('cashBalance');
+const txListEl = document.getElementById('txList');
+const addExpenseBtn = document.getElementById('addExpenseBtn');
+const addIncomeBtn = document.getElementById('addIncomeBtn');
+const addIncomeAltBtn = document.getElementById('addIncomeAltBtn');
+const addTransferBtn = document.getElementById('addTransferBtn');
+const openRecurringBtn = document.getElementById('openRecurring');
+const manageCatsBtn = document.getElementById('manageCatsBtn');
+const exportBtn = document.getElementById('exportBtn');
+const importBtn = document.getElementById('importBtn');
+const settingsBtn = document.getElementById('settingsBtn');
+const searchInput = document.getElementById('searchInput');
+
+const overlay = document.getElementById('overlay');
+const sideTitle = document.getElementById('sideTitle');
+const sideCancel = document.getElementById('sideCancel');
+const sideSave = document.getElementById('sideSave');
+const txForm = document.getElementById('txForm');
+const txDate = document.getElementById('txDate');
+const txType = document.getElementById('txType');
+const txAmount = document.getElementById('txAmount');
+const txCategory = document.getElementById('txCategory');
+const txFrom = document.getElementById('txFrom');
+const txTo = document.getElementById('txTo');
+const txDesc = document.getElementById('txDesc');
+const txImage = document.getElementById('txImage');
+const txImagePreview = document.getElementById('txImagePreview');
+const removeImageBtn = document.getElementById('removeImageBtn');
+
+const catOverlay = document.getElementById('catOverlay');
+const closeCat = document.getElementById('closeCat');
+const newCatInput = document.getElementById('newCatInput');
+const addCatBtn = document.getElementById('addCatBtn');
+const catListEl = document.getElementById('catList');
+
+const recOverlay = document.getElementById('recOverlay');
+const closeRec = document.getElementById('closeRec');
+const recListEl = document.getElementById('recList');
+const recFormArea = document.getElementById('recFormArea');
+const newRecurringBtnEl = document.getElementById('newRecurringBtn');
+
+const settingsOverlay = document.getElementById('settingsOverlay');
+const closeSettings = document.getElementById('closeSettings');
+const exportArea = document.getElementById('exportArea');
+const importArea = document.getElementById('importArea');
+const doExport = document.getElementById('doExport');
+const downloadExport = document.getElementById('downloadExport');
+const doImport = document.getElementById('doImport');
+const resetBtn = document.getElementById('resetBtn');
+const resetSampleBtn2 = document.getElementById('resetSampleBtn');
+
+const upThisEl = document.getElementById('upThis');
+const upNextEl = document.getElementById('upNext');
+const upAfterEl = document.getElementById('upAfter');
+const monthlySavingsEl = document.getElementById('monthlySavings');
+const last30El = document.getElementById('last30');
+const warningsArea = document.getElementById('warningsArea');
+
+// ---------- PIN logic ----------
+unlockBtn.addEventListener('click', tryUnlock);
+pinInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') tryUnlock() });
+resetSampleBtn.addEventListener('click', ()=>{
+  if(confirm('Reset app to sample data?')) {
+    data = JSON.parse(JSON.stringify(defaultData));
+    saveData(data);
+    alert('Reset complete.');
+  }
+});
+
+function tryUnlock(){
+  const v = pinInput.value.trim();
+  if(v === PIN_CODE){
+    currentUserUnlocked = true;
+    pinOverlay.style.display = 'none';
+    appContainer.setAttribute('aria-hidden','false');
+    initApp();
+  } else {
+    alert('Wrong PIN');
+    pinInput.value='';
+    pinInput.focus();
+  }
+}
+
+// If previously unlocked in this session, skip? For simplicity require PIN each reload.
+
+// ---------- Init App ----------
+function initApp(){
+  renderBalances();
+  renderTransactions();
+  populateCategorySelect();
+  populateAccountSelects();
+  renderCatsList();
+  renderRecurring();
+  computeStats();
+  attachUiHandlers();
+}
+
+// ---------- UI handlers ----------
+function attachUiHandlers(){
+  addExpenseBtn.addEventListener('click', ()=>openTxModal('expense'));
+  addIncomeBtn.addEventListener('click', ()=>openTxModal('transfer'));
+  addTransferBtn.addEventListener('click', ()=>openTxModal('transfer'));
+  addIncomeAltBtn.addEventListener('click', ()=>openTxModal('income'));
+  newTxBtn.addEventListener('click', ()=>openTxModal('expense'));
+
+  sideCancel.addEventListener('click', closeOverlay);
+  document.getElementById('newTxBtn').addEventListener('click', ()=>openTxModal('expense'));
+
+  txImage.addEventListener('change', onImageSelected);
+  removeImageBtn.addEventListener('click', removeTxImage);
+  sideSave.addEventListener('click', saveTxFromForm);
+
+  manageCatsBtn.addEventListener('click', ()=>openCatManager());
+  closeCat.addEventListener('click', closeCatManager);
+  addCatBtn.addEventListener('click', addCategoryFromInput);
+  newCatInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') addCategoryFromInput() });
+
+  openRecurringBtn.addEventListener('click', ()=>openRecurring());
+  closeRec.addEventListener('click', closeRecurring);
+  newRecurringBtnEl.addEventListener('click', ()=>renderRecurringForm());
+
+  settingsBtn.addEventListener('click', ()=>openSettings());
+  closeSettings.addEventListener('click', closeSettingsPanel);
+  exportBtn.addEventListener('click', ()=>openSettings());
+  importBtn.addEventListener('click', ()=>openSettings());
+  doExport.addEventListener('click', doExportJson);
+  downloadExport.addEventListener('click', downloadExportJson);
+  doImport.addEventListener('click', doImportJson);
+  resetBtn.addEventListener('click', ()=>{ if(confirm('Reset to sample data?')){ data = JSON.parse(JSON.stringify(defaultData)); saveData(data); location.reload(); } });
+
+  searchInput.addEventListener('input', renderTransactions);
+
+  // overlay keyboard: ESC to close
+  document.addEventListener('keydown', (e)=>{
+    if(e.key==='Escape'){
+      closeOverlay(); closeCatManager(); closeRecurring(); closeSettingsPanel();
+    }
+  });
+
+  // focus outlines and enter keyboard accessibility on quick-action buttons
+  const quickButtons = document.querySelectorAll('.btn, .small, .ghost');
+  quickButtons.forEach(b=>{
+    b.setAttribute('tabindex','0');
+    b.addEventListener('keydown', (e)=>{ if(e.key==='Enter') b.click(); });
+  });
+}
+
+// ---------- Render balances ----------
+function renderBalances(){
+  bankBalanceEl.textContent = data.accounts.bank.balance.toFixed(2) + ' TND';
+  cashBalanceEl.textContent = data.accounts.cash.balance.toFixed(2) + ' TND';
+}
+
+// ---------- Populate selects ----------
+function populateCategorySelect(){
+  txCategory.innerHTML='';
+  const frag = document.createDocumentFragment();
+  data.categories.forEach(c=>{
+    const opt = document.createElement('option'); opt.value=c; opt.textContent = c; frag.appendChild(opt);
+  });
+  txCategory.appendChild(frag);
+}
+
+function populateAccountSelects(){
+  // txFrom and txTo get readable backgrounds via CSS (native selects style limited)
+  txFrom.innerHTML=''; txTo.innerHTML='';
+  const accounts = [data.accounts.bank.name, data.accounts.cash.name];
+  accounts.forEach(a=>{
+    const o1 = document.createElement('option'); o1.value=a; o1.textContent = a; txFrom.appendChild(o1);
+    const o2 = document.createElement('option'); o2.value=a; o2.textContent = a; txTo.appendChild(o2);
+  });
+  // default from for expense: cash
+  // note: we will set default when opening form
+}
+
+// ---------- Transactions rendering ----------
+function renderTransactions(){
+  txListEl.innerHTML='';
+  const q = searchInput.value.trim().toLowerCase();
+  const txs = data.transactions.slice().sort((a,b)=>b.created - a.created);
+  txs.forEach(tx=>{
+    if(q){
+      const match = (tx.category||'').toLowerCase().includes(q) || (tx.desc||'').toLowerCase().includes(q) || (tx.date||'').includes(q) || (String(tx.amount)).includes(q);
+      if(!match) return;
+    }
+    const card = document.createElement('div');
+    card.className='tx-card';
+    card.tabIndex=0;
+    card.setAttribute('role','button');
+    card.addEventListener('click', ()=>openTxModalForEdit(tx.id));
+    card.addEventListener('keydown', (e)=>{ if(e.key==='Enter') openTxModalForEdit(tx.id); });
+
+    const left = document.createElement('div'); left.className='tx-left';
+    const thumb = document.createElement('div'); thumb.className='tx-thumb';
+    if(tx.receipt){
+      const img = document.createElement('img'); img.src=tx.receipt; img.className='thumb-small'; img.style.width='44px'; img.style.height='44px';
+      thumb.innerHTML=''; thumb.appendChild(img);
+      img.addEventListener('click', (ev)=>{ ev.stopPropagation(); showImageFull(tx.receipt); });
+    } else {
+      thumb.textContent = (tx.category||'?').slice(0,1).toUpperCase();
+    }
+    left.appendChild(thumb);
+
+    const info = document.createElement('div'); info.className='tx-info';
+    const title = document.createElement('div'); title.className='tx-desc'; title.textContent = (tx.category || 'No category') + ' — ' + (tx.desc || '');
+    const small = document.createElement('div'); small.className='tx-cat tiny'; small.textContent = tx.date + (tx.from?(' • '+tx.from):'') + (tx.to?(' → '+tx.to):'');
+    info.appendChild(title); info.appendChild(small);
+    left.appendChild(info);
+
+    const right = document.createElement('div'); right.className='tx-right';
+    const amt = document.createElement('div'); amt.className='amt ' + (tx.type==='income'?'income': tx.type==='expense'?'expense':'transfer');
+    amt.textContent = (tx.amount>0?'+':'') + Number(tx.amount).toFixed(2) + ' TND';
+    right.appendChild(amt);
+
+    const editBtn = document.createElement('button'); editBtn.className='small ghost'; editBtn.textContent='Edit';
+    editBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); openTxModalForEdit(tx.id); });
+    right.appendChild(editBtn);
+
+    const delBtn = document.createElement('button'); delBtn.className='small ghost'; delBtn.textContent='Delete';
+    delBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); if(confirm('Delete this transaction?')){ deleteTransaction(tx.id); } });
+    right.appendChild(delBtn);
+
+    card.appendChild(left); card.appendChild(right);
+    // border color based on type
+    card.style.borderLeftColor = tx.type==='income' ? 'rgba(33,201,138,0.8)' : tx.type==='expense' ? 'rgba(255,107,107,0.8)' : 'rgba(74,163,255,0.8)';
+    txListEl.appendChild(card);
+  });
+}
+
+// ---------- Transaction CRUD ----------
+function openTxModal(type='expense'){
+  editingTx = null;
+  sideTitle.textContent = type==='expense' ? 'Add Expense' : type==='income' ? 'Add Income' : 'Withdraw / Transfer';
+  txForm.reset();
+  txImagePreview.style.display='none'; removeImageBtn.style.display='none';
+  txDate.value = todayStr();
+  txType.value = type;
+  txAmount.value = '';
+  txDesc.value = '';
+  populateCategorySelect();
+  populateAccountSelects();
+  // default behavior: Expenses default from cash in pocket
+  txFrom.value = (type==='expense') ? data.accounts.cash.name : data.accounts.bank.name;
+  txTo.value = (type==='expense') ? '' : data.accounts.cash.name;
+  overlay.style.display='flex'; overlay.setAttribute('aria-hidden','false');
+  txDate.focus();
+}
+
+function openTxModalForEdit(id){
+  const tx = data.transactions.find(t=>t.id===id);
+  if(!tx) return alert('Transaction not found');
+  editingTx = tx;
+  sideTitle.textContent = 'Edit Transaction';
+  txDate.value = tx.date || todayStr();
+  txType.value = tx.type;
+  txAmount.value = Math.abs(Number(tx.amount));
+  txCategory.value = tx.category || '';
+  txFrom.value = tx.from || data.accounts.cash.name;
+  txTo.value = tx.to || (tx.type==='income'?data.accounts.bank.name:'');
+  txDesc.value = tx.desc || '';
+  if(tx.receipt){
+    txImagePreview.src = tx.receipt; txImagePreview.style.display='inline-block'; removeImageBtn.style.display='inline-block';
+  } else { txImagePreview.style.display='none'; removeImageBtn.style.display='none' }
+  overlay.style.display='flex'; overlay.setAttribute('aria-hidden','false');
+}
+
+function closeOverlay(){
+  overlay.style.display='none'; overlay.setAttribute('aria-hidden','true');
+  editingTx = null;
+  txForm.reset();
+  txImage.value=''; txImagePreview.src=''; txImagePreview.style.display='none'; removeImageBtn.style.display='none';
+}
+
+function onImageSelected(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev){ txImagePreview.src = ev.target.result; txImagePreview.style.display='inline-block'; removeImageBtn.style.display='inline-block'; };
+  reader.readAsDataURL(file);
+}
+
+function removeTxImage(){ txImage.value=''; txImagePreview.src=''; txImagePreview.style.display='none'; removeImageBtn.style.display='none'; }
+
+function saveTxFromForm(){
+  const type = txType.value;
+  const rawAmt = parseFloat(txAmount.value || '0');
+  if(isNaN(rawAmt) || rawAmt<=0) return alert('Enter a valid amount');
+  const amt = (type==='expense') ? -Math.abs(rawAmt) : Math.abs(rawAmt);
+  const txObj = {
+    id: editingTx ? editingTx.id : genId(),
+    date: txDate.value || todayStr(),
+    type,
+    category: txCategory.value || '',
+    desc: txDesc.value || '',
+    amount: amt,
+    from: txFrom.value || '',
+    to: txTo.value || '',
+    receipt: txImagePreview.src || (editingTx?editingTx.receipt:''),
+    created: editingTx ? editingTx.created : Date.now()
+  };
+
+  if(editingTx){
+    // undo previous effect on balances
+    undoTransactionEffect(editingTx);
+    // replace
+    const idx = data.transactions.findIndex(t=>t.id===editingTx.id);
+    data.transactions[idx] = txObj;
+  } else {
+    data.transactions.push(txObj);
+  }
+  // apply new effect
+  applyTransactionEffect(txObj);
+  saveData(data);
+  closeOverlay();
+  renderBalances(); renderTransactions(); computeStats();
+}
+
+function deleteTransaction(id){
+  const idx = data.transactions.findIndex(t=>t.id===id);
+  if(idx===-1) return;
+  if(!confirm('Are you sure you want to permanently delete this transaction?')) return;
+  // undo effect on balances
+  undoTransactionEffect(data.transactions[idx]);
+  data.transactions.splice(idx,1);
+  saveData(data);
+  renderTransactions();
+  renderBalances();
+  computeStats();
+}
+
+function applyTransactionEffect(tx){
+  // For expense: subtract from 'from' account (default Cash)
+  // For income: add to 'to' account
+  // For transfer: subtract from 'from' and add to 'to' (transfer/withdraw)
+  if(tx.type==='expense'){
+    if(tx.from === data.accounts.cash.name) data.accounts.cash.balance += Number(tx.amount);
+    else if(tx.from === data.accounts.bank.name) data.accounts.bank.balance += Number(tx.amount);
+    // tx.amount is negative, so adding negative reduces
+  } else if(tx.type==='income'){
+    if(tx.to === data.accounts.bank.name) data.accounts.bank.balance += Number(tx.amount);
+    else if(tx.to === data.accounts.cash.name) data.accounts.cash.balance += Number(tx.amount);
+  } else if(tx.type==='transfer'){
+    // transfers are positive amounts (we stored positive for transfer)
+    // For withdraw/transfer we keep amount positive; remove from from account, add to to.
+    const amt = Number(tx.amount);
+    if(tx.from === data.accounts.bank.name) data.accounts.bank.balance -= amt;
+    if(tx.from === data.accounts.cash.name) data.accounts.cash.balance -= amt;
+    if(tx.to === data.accounts.cash.name) data.accounts.cash.balance += amt;
+    if(tx.to === data.accounts.bank.name) data.accounts.bank.balance += amt;
+  }
+  // Round to 2 decimals
+  data.accounts.bank.balance = Number(data.accounts.bank.balance.toFixed(2));
+  data.accounts.cash.balance = Number(data.accounts.cash.balance.toFixed(2));
+}
+
+function undoTransactionEffect(tx){
+  if(!tx) return;
+  // Reverse effects
+  if(tx.type==='expense'){
+    if(tx.from === data.accounts.cash.name) data.accounts.cash.balance -= Number(tx.amount);
+    else if(tx.from === data.accounts.bank.name) data.accounts.bank.balance -= Number(tx.amount);
+  } else if(tx.type==='income'){
+    if(tx.to === data.accounts.bank.name) data.accounts.bank.balance -= Number(tx.amount);
+    else if(tx.to === data.accounts.cash.name) data.accounts.cash.balance -= Number(tx.amount);
+  } else if(tx.type==='transfer'){
+    const amt = Number(tx.amount);
+    if(tx.to === data.accounts.bank.name) data.accounts.bank.balance -= amt;
+    if(tx.to === data.accounts.cash.name) data.accounts.cash.balance -= amt;
+    if(tx.from === data.accounts.bank.name) data.accounts.bank.balance += amt;
+    if(tx.from === data.accounts.cash.name) data.accounts.cash.balance += amt;
+  }
+  data.accounts.bank.balance = Number(data.accounts.bank.balance.toFixed(2));
+  data.accounts.cash.balance = Number(data.accounts.cash.balance.toFixed(2));
+}
+
+// ---------- Image preview full ----------
+function showImageFull(dataUrl){
+  const w = window.open('', '_blank');
+  w.document.write('<title>Receipt</title><img src="'+dataUrl+'" style="max-width:100%;height:auto"/>');
+}
+
+// ---------- Categories manager ----------
+function openCatManager(){
+  catOverlay.style.display='flex'; catOverlay.setAttribute('aria-hidden','false');
+  newCatInput.focus();
+}
+function closeCatManager(){ catOverlay.style.display='none'; catOverlay.setAttribute('aria-hidden','true'); }
+function renderCatsList(){
+  catListEl.innerHTML='';
+  data.categories.forEach((c, i)=>{
+    const item = document.createElement('div'); item.className='cat-item';
+    const left = document.createElement('div'); left.textContent = c;
+    const right = document.createElement('div');
+    const del = document.createElement('button'); del.className='small ghost'; del.textContent='Delete';
+    del.addEventListener('click', ()=>{ if(confirm('Delete category "'+c+'"? This will NOT remove transactions already using it.')){ data.categories.splice(i,1); saveData(data); populateCategorySelect(); renderCatsList(); } });
+    right.appendChild(del);
+    item.appendChild(left); item.appendChild(right);
+    catListEl.appendChild(item);
+  });
+}
+function addCategoryFromInput(){
+  const v = newCatInput.value.trim();
+  if(!v) return;
+  if(data.categories.includes(v)) { alert('Already exists'); return; }
+  data.categories.push(v);
+  saveData(data);
+  newCatInput.value='';
+  populateCategorySelect(); renderCatsList();
+}
+
+// ---------- Recurring payments ----------
+function openRecurring(){ recOverlay.style.display='flex'; recOverlay.setAttribute('aria-hidden','false'); renderRecurring(); }
+function closeRecurring(){ recOverlay.style.display='none'; recOverlay.setAttribute('aria-hidden','true'); }
+function renderRecurring(){
+  recListEl.innerHTML=''; recFormArea.innerHTML='';
+  if(!data.recurring) data.recurring=[];
+  data.recurring.forEach(r=>{
+    const row = document.createElement('div'); row.style.padding='8px'; row.style.borderRadius='8px'; row.style.marginBottom='8px'; row.style.background='rgba(255,255,255,0.01)';
+    const top = document.createElement('div'); top.style.display='flex'; top.style.justifyContent='space-between'; top.style.alignItems='center';
+    const title = document.createElement('div'); title.innerHTML = '<strong>'+r.name+'</strong> <div class="tiny">'+r.category+' • '+r.amount.toFixed(2)+' TND</div>';
+    top.appendChild(title);
+    const actions = document.createElement('div');
+    const edit = document.createElement('button'); edit.className='small ghost'; edit.textContent='Edit';
+    edit.addEventListener('click', ()=> renderRecurringForm(r.id));
+    const del = document.createElement('button'); del.className='small ghost'; del.textContent='Delete';
+    del.addEventListener('click', ()=>{ if(confirm('Delete recurring payment "'+r.name+'"?')){ data.recurring = data.recurring.filter(x=>x.id!==r.id); saveData(data); renderRecurring(); computeStats(); } });
+    actions.appendChild(edit); actions.appendChild(del);
+    top.appendChild(actions);
+    row.appendChild(top);
+    const details = document.createElement('div'); details.className='tiny muted'; details.style.marginTop='8px';
+    details.textContent = 'Next due: '+r.nextDue + ' • Every ' + r.freqDays + ' days';
+    row.appendChild(details);
+    recListEl.appendChild(row);
+  });
+  computeStats();
+}
+
+function renderRecurringForm(id){
+  let r = null;
+  if(id) r = data.recurring.find(x=>x.id===id);
+  recFormArea.innerHTML = '';
+  const f = document.createElement('div');
+  f.innerHTML = `
+    <div class="field"><label>Payment name</label><input id="rName" type="text" /></div>
+    <div class="field"><label>Amount (TND)</label><input id="rAmount" type="number" step="0.01" /></div>
+    <div class="field"><label>Category</label><select id="rCategory"></select></div>
+    <div class="field"><label>Frequency (days)</label><input id="rFreq" type="number" /></div>
+    <div class="field"><label>Next due date</label><input id="rNext" type="date" /></div>
+    <div class="field"><label>Notes</label><textarea id="rNotes"></textarea></div>
+    <div style="display:flex; gap:8px"><button class="btn small" id="saveRec">Save</button><button class="small ghost" id="cancelRec">Cancel</button></div>
+  `;
+  recFormArea.appendChild(f);
+  // populate categories select
+  const rCat = document.getElementById('rCategory');
+  data.categories.forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; rCat.appendChild(o); });
+  if(r){
+    document.getElementById('rName').value = r.name;
+    document.getElementById('rAmount').value = r.amount;
+    document.getElementById('rFreq').value = r.freqDays;
+    document.getElementById('rNext').value = r.nextDue;
+    document.getElementById('rNotes').value = r.notes;
+    rCat.value = r.category;
+  } else {
+    document.getElementById('rNext').value = todayStr();
+  }
+
+  document.getElementById('cancelRec').addEventListener('click', ()=>{ recFormArea.innerHTML=''; });
+  document.getElementById('saveRec').addEventListener('click', ()=>{
+    const name = document.getElementById('rName').value.trim();
+    const amount = Number(document.getElementById('rAmount').value || 0);
+    const freq = Number(document.getElementById('rFreq').value || 30);
+    const next = document.getElementById('rNext').value;
+    const notes = document.getElementById('rNotes').value;
+    const category = rCat.value || 'Others';
+    if(!name || !next || isNaN(amount) ) return alert('Fill name, amount, and next due date');
+    if(r){
+      // edit
+      r.name = name; r.amount = amount; r.freqDays = Math.max(1,freq); r.nextDue = next; r.notes = notes; r.category = category;
+    } else {
+      data.recurring.push({id:genId(), name, amount, category, freqDays:Math.max(1,freq), nextDue:next, notes});
+    }
+    saveData(data); renderRecurring(); recFormArea.innerHTML=''; computeStats();
+  });
+}
+
+// ---------- Recurrence counting into months ----------
+function occurrencesInRange(rec, startDate, endDate){
+  // Count occurrences starting from rec.nextDue up to endDate inclusive
+  // We'll simulate forward from nextDue until > endDate
+  const freq = Number(rec.freqDays);
+  if(isNaN(freq) || freq<=0) return 0;
+  let count = 0;
+  let d = parseDate(rec.nextDue);
+  const end = parseDate(endDate);
+  const start = parseDate(startDate);
+  // If nextDue is after endDate, maybe no occurrences
+  // We will move forward in steps of freq days until beyond end
+  while(d <= end){
+    if(d >= start && d <= end) count++;
+    d.setDate(d.getDate() + freq);
+    // safety break
+    if(count>1000) break;
+  }
+  return count;
+}
+
+function monthBounds(dateObj){
+  const y = dateObj.getFullYear(), m = dateObj.getMonth();
+  const start = new Date(y,m,1); const end = new Date(y,m+1,0); // last day
+  return {start: start.toISOString().slice(0,10), end: end.toISOString().slice(0,10)};
+}
+
+function computeUpcomingTotals(){
+  // compute totals for this month, next, month after
+  const now = new Date();
+  const thisMonth = monthBounds(now);
+  const next = monthBounds(new Date(now.getFullYear(), now.getMonth()+1, 1));
+  const after = monthBounds(new Date(now.getFullYear(), now.getMonth()+2, 1));
+  let tThis=0, tNext=0, tAfter=0;
+  (data.recurring || []).forEach(r=>{
+    const cThis = occurrencesInRange(r, thisMonth.start, thisMonth.end);
+    const cNext = occurrencesInRange(r, next.start, next.end);
+    const cAfter = occurrencesInRange(r, after.start, after.end);
+    tThis += cThis * Number(r.amount || 0);
+    tNext += cNext * Number(r.amount || 0);
+    tAfter += cAfter * Number(r.amount || 0);
+  });
+  return {tThis, tNext, tAfter};
+}
+
+// ---------- Compute stats & warnings ----------
+function computeStats(){
+  // monthly savings (current month)
+  const now = new Date();
+  const mstart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+  const mend = new Date(now.getFullYear(), now.getMonth()+1, 0).toISOString().slice(0,10);
+  let income=0, expenses=0;
+  data.transactions.forEach(t=>{
+    if(t.date >= mstart && t.date <= mend){
+      if(t.type==='expense') expenses += Math.abs(Number(t.amount));
+      else if(t.type==='income') income += Number(t.amount);
+      else if(t.type==='transfer'){
+        // transfers don't count as expense or income for monthly savings
+      }
+    }
+  });
+  const savings = income - expenses;
+  monthlySavingsEl.textContent = savings.toFixed(2) + ' TND';
+  // last 30 days spending
+  const date30 = new Date(); date30.setDate(date30.getDate()-30);
+  let last30 = 0;
+  data.transactions.forEach(t=>{
+    if(parseDate(t.date) >= date30){
+      if(t.type==='expense') last30 += Math.abs(Number(t.amount));
+    }
+  });
+  last30El.textContent = last30.toFixed(2)+' TND';
+  // upcoming totals
+  const up = computeUpcomingTotals();
+  upThisEl.textContent = up.tThis.toFixed(2)+' TND';
+  upNextEl.textContent = up.tNext.toFixed(2)+' TND';
+  upAfterEl.textContent = up.tAfter.toFixed(2)+' TND';
+  // warnings: if next month upcoming > average monthly income
+  const monthlyIncomeAvg = computeMonthlyIncomeAverage();
+  warningsArea.innerHTML = '';
+  if(monthlyIncomeAvg>0 && up.tThis > monthlyIncomeAvg*0.9){
+    warningsArea.innerHTML = '<strong style="color:var(--danger)">⚠ High expense month ahead</strong>';
+  } else if(up.tThis > (data.accounts.bank.balance + data.accounts.cash.balance)/2){
+    warningsArea.innerHTML = '<span style="color:var(--danger)">⚠ Many payments this month — check cash</span>';
+  }
+}
+
+function computeMonthlyIncomeAverage(){
+  // average income across recorded months
+  const incomesByMonth = {};
+  data.transactions.forEach(t=>{
+    if(t.type!=='income') return;
+    const key = t.date.slice(0,7);
+    incomesByMonth[key] = (incomesByMonth[key]||0) + Number(t.amount);
+  });
+  const vals = Object.values(incomesByMonth);
+  if(vals.length===0) return 0;
+  const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
+  return avg;
+}
+
+// ---------- Settings / Export / Import ----------
+function openSettings(){
+  settingsOverlay.style.display='flex'; settingsOverlay.setAttribute('aria-hidden','false');
+  exportArea.value = JSON.stringify(data, null, 2);
+}
+function closeSettingsPanel(){ settingsOverlay.style.display='none'; settingsOverlay.setAttribute('aria-hidden','true'); }
+function doExportJson(){ navigator.clipboard.writeText(JSON.stringify(data)).then(()=>alert('Copied to clipboard')); }
+function downloadExportJson(){
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='expense-data.json'; a.click(); URL.revokeObjectURL(url);
+}
+function doImportJson(){
+  try {
+    const obj = JSON.parse(importArea.value);
+    if(!confirm('Importing will replace current data. Continue?')) return;
+    data = obj; saveData(data); alert('Imported'); location.reload();
+  } catch(e){ alert('Invalid JSON'); }
+}
+
+// ---------- Helpers to create sample transactions effects (on first run) ----------
+function applyAllTransactionsToBalances(){
+  // We reset balances to the stored starting points in accounts and reapply transactions sequentially.
+  // But our defaultData already contains a balance; to re-evaluate balances accurately we store initial bank & cash base as starting balances.
+  // For simplicity: We'll recompute from scratch using initialBase if present; otherwise, set to 0 and apply transactions.
+  // Here we'll set base to what data.accounts currently store, then rebuild using transactions but to avoid double-applying, do nothing.
+  // Simpler: ensure balances consistent by recalculating bank/cash by summing incomes/transfers/expenses.
+  let bank = 0, cash = 0;
+  // find any earlier starting point from settings: if user's data contained initial bank/cash amounts, keep them as base (we'll use beginning of time concept).
+  // For safe behavior, keep current balances if present but ensure they reflect transactions. We'll compute a 'net' from transactions and adjust to keep base sensible.
+  // Simpler and safe: if balances exist, keep them but make sure they are numbers:
+  data.accounts.bank.balance = Number(data.accounts.bank.balance || 0);
+  data.accounts.cash.balance = Number(data.accounts.cash.balance || 0);
+}
+applyAllTransactionsToBalances();
+
+// ---------- Init routine after PIN ----------
+function initAppAfterPin(){
+  // Ensure data integrity
+  if(!data.categories) data.categories = [];
+  if(!data.transactions) data.transactions = [];
+  if(!data.recurring) data.recurring = [];
+  // render
+  renderBalances(); renderTransactions(); populateCategorySelect(); populateAccountSelects();
+}
+
+// ---------- On load events (but wait for PIN) ----------
+document.addEventListener('DOMContentLoaded', ()=>{
+  // default hide app until pin
+  appContainer.setAttribute('aria-hidden','true');
+});
+
+// ---------- Render recurring totals on startup if unlocked  ----------
+function startIfUnlocked(){
+  if(currentUserUnlocked) initAppAfterPin();
+}
+
+// call later if unlocked
+// ---------- Populate tx category, accounts -->
+populateCategorySelect();
+populateAccountSelects();
+
+// ---------- On startup if unlocked already (shouldn't) ----------
+if(currentUserUnlocked) initApp();
+
+// ---------- Helper: reset to sample (button from overlay) ----------
+resetSampleBtn2 && resetSampleBtn2.addEventListener('click', ()=>{
+  if(confirm('Reset to sample data?')){
+    data = JSON.parse(JSON.stringify(defaultData));
+    saveData(data);
+    location.reload();
+  }
+});
+
+// initial compute (but will update after unlock)
+computeStats();
+renderTransactions();
+
+// Ensure newTxBtn exists reference (created earlier)
+const newTxBtnEl = document.getElementById('newTxBtn');
+
+// Provide accessible labels and focus
+// set tabindex on interactive elements
+[addExpenseBtn, addIncomeBtn, addTransferBtn, addIncomeAltBtn, openRecurringBtn, manageCatsBtn, settingsBtn].forEach(b=>b.setAttribute('tabindex','0'));
+
+// Done.
+</script>
+</body>
+</html>

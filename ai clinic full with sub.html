@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClinicOS - The Ultimate Interactive Blueprint</title>
+    <style>
+        :root {
+            --bg-color: #f0f4f8; --main-bg: #ffffff; --text-color: #1a253c; --primary-color: #007bff;
+            --header-color: #003366; --border-color: #d1d9e6; --shadow-color: rgba(0,0,0,0.1);
+            --human-color: #007bff; --agent-color: #28a745; --tool-color: #ffc107;
+            --sub-agent-color: #6f42c1; --llm-color: #fd7e14;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes modal-fade-in { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 10px var(--glow-color), 0 0 20px var(--glow-color); transform: scale(1); }
+            50% { box-shadow: 0 0 20px var(--glow-color), 0 0 40px var(--glow-color); transform: scale(1.02); }
+        }
+        @keyframes draw-line { to { stroke-dashoffset: 0; } }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color); color: var(--text-color); line-height: 1.6;
+            margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh;
+        }
+        .main-container { display: flex; gap: 20px; width: 100%; max-width: 1800px; height: 95vh; }
+        .left-panel, .right-panel {
+            background: var(--main-bg); padding: 30px; border-radius: 12px;
+            box-shadow: 0 8px 30px var(--shadow-color); display: flex; flex-direction: column;
+        }
+        .left-panel { flex: 4; }
+        .right-panel { flex: 5; }
+        
+        h1, h2 { color: var(--header-color); text-align: center; margin: 0 0 20px 0; }
+        h1 { border-bottom: 2px solid var(--border-color); padding-bottom: 15px; }
+
+        .chat-log-wrapper { flex-grow: 1; overflow-y: auto; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 20px; }
+        .chat-log { display: flex; flex-direction: column; gap: 15px; }
+        .message { padding: 15px; border-radius: 10px; animation: fadeIn 0.5s ease-out; border-left-width: 5px; border-left-style: solid; }
+        .speaker { font-weight: bold; display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 1.1em; }
+        .human { border-color: var(--human-color); background-color: #e6f7ff; } .human .speaker { color: var(--human-color); }
+        .agent { border-color: var(--agent-color); background-color: #f6ffed; } .agent .speaker { color: var(--agent-color); }
+        .thinking { border-color: #6c757d; background-color: #f8f9fa; font-style: italic; color: #495057; } .thinking .speaker { color: #6c757d; }
+        .tool { border-color: var(--tool-color); background-color: #fffbe6; font-family: 'Courier New', Courier, monospace; font-size: 0.9em; } .tool .speaker { color: var(--tool-color); }
+
+        .input-area { text-align: center; }
+        .action-button {
+            background-color: var(--primary-color); color: white; border: none; padding: 12px 25px; border-radius: 8px;
+            font-size: 1.1em; font-weight: bold; cursor: pointer; transition: all 0.3s ease;
+        }
+        .action-button:hover { background-color: #0056b3; transform: translateY(-2px); }
+        .action-button.disabled { background-color: #6c757d; cursor: not-allowed; opacity: 0.7; }
+
+        .diagram-container { position: relative; width: 100%; height: 100%; }
+        .diagram-component {
+            position: absolute; padding: 8px 12px; border: 2px solid var(--border-color);
+            border-radius: 8px; background: var(--main-bg); box-shadow: 0 4px 10px var(--shadow-color);
+            text-align: center; transition: all 0.3s ease;
+        }
+        .diagram-component strong { display: block; font-size: 1em; } .diagram-component span { font-size: 0.75em; color: #6c757d; }
+        .glowing { --glow-color: var(--agent-color); border-color: var(--glow-color); animation: pulse-glow 1.5s infinite; }
+        .glowing.tool-glow { --glow-color: var(--tool-color); } .glowing.sub-agent-glow { --glow-color: var(--sub-agent-color); }
+        .glowing.llm-glow { --glow-color: var(--llm-color); } .glowing.db-glow { --glow-color: #28a745; }
+
+        /* Main Diagram Layout */
+        #m-human-op { top: 2%; left: 50%; transform: translateX(-50%); }
+        #m-chief-coord { top: 25%; left: 50%; transform: translateX(-50%); width: 200px; }
+        #m-ehr-secretary { top: 55%; left: 18%; transform: translate(-50%, -50%); width: 180px; }
+        #m-specialist-router { top: 55%; left: 50%; transform: translate(-50%, -50%); width: 180px; }
+        #m-consensus-agent { top: 55%; left: 82%; transform: translate(-50%, -50%); width: 180px; }
+        #m-doctor-review { top: 85%; left: 50%; transform: translateX(-50%); width: 200px; }
+
+        .svg-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
+        .flow-line { stroke: #adb5bd; stroke-width: 3; fill: none; stroke-dasharray: 1000; stroke-dashoffset: 1000; }
+        .flow-line.animate { animation: draw-line 1.2s ease-out forwards; }
+        
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6);
+            display: none; justify-content: center; align-items: center; z-index: 1000;
+        }
+        .modal-content {
+            width: 90%; max-width: 1400px; height: 90vh; background: var(--main-bg);
+            border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            animation: modal-fade-in 0.4s; display: flex; gap: 20px; padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="left-panel">
+            <h1>Mission Control: Main Workflow</h1>
+            <div class="chat-log-wrapper">
+                <div id="main-chat-log"></div>
+            </div>
+            <div id="main-input-area"></div>
+        </div>
+        <div class="right-panel">
+            <h2>Live System Architecture</h2>
+            <div id="main-diagram" class="diagram-container">
+                <div id="m-human-op" class="diagram-component"><strong>👩‍⚕️ Dr. Aris</strong><span>Operator</span></div>
+                <div id="m-chief-coord" class="diagram-component"><strong>🤖 Chief Coordinator</strong><span>Primary Agent</span></div>
+                <div id="m-ehr-secretary" class="diagram-component"><strong>📋 EHR Secretary</strong><span>Tool</span></div>
+                <div id="m-specialist-router" class="diagram-component"><strong>🧠 Specialist Router</strong><span>Tool</span></div>
+                <div id="m-consensus-agent" class="diagram-component"><strong>✍️ Consensus Agent</strong><span>Tool</span></div>
+                <div id="m-doctor-review" class="diagram-component"><strong>✅ Final Review</strong><span>Tool</span></div>
+                <svg id="main-svg" class="svg-container"></svg>
+            </div>
+        </div>
+    </div>
+
+    <!-- EHR Secretary Modal -->
+    <div id="ehr-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="left-panel">
+                <h1>Deep Dive: EHR Secretary</h1>
+                <div class="chat-log-wrapper">
+                    <div id="ehr-chat-log"></div>
+                </div>
+                <div id="ehr-input-area"></div>
+            </div>
+            <div class="right-panel">
+                <h2>Live Internal Systems</h2>
+                <div id="ehr-diagram" class="diagram-container">
+                    <div id="e-chief-coord" class="diagram-component" style="top: 5%; left: 50%; transform: translateX(-50%);"><strong>🤖 Chief Coordinator</strong><span>(Caller)</span></div>
+                    <div id="e-ehr-agent" class="diagram-component" style="top: 35%; left: 50%; transform: translateX(-50%); width: 220px;"><strong>📋 EHR Secretary Agent</strong><span>Data Tool</span></div>
+                    <div id="e-ehr-logic" class="diagram-component" style="top: 60%; left: 50%; transform: translateX(-50%); width: 180px;"><strong>⚙️ Internal Logic</strong><span>(Search, Append)</span></div>
+                    <div class="diagram-component" style="top: 85%; left: 50%; transform: translateX(-50%); display: flex; gap: 20px; border: none; background: none; box-shadow: none;">
+                        <div id="e-patients-sheet" class="diagram-component" style="position: static; transform: none;"><strong>📄 Patients Sheet</strong></div>
+                        <div id="e-visits-sheet" class="diagram-component" style="position: static; transform: none;"><strong>📄 Visits Sheet</strong></div>
+                    </div>
+                    <svg id="ehr-svg" class="svg-container"></svg>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Specialist Router Modal -->
+    <div id="router-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="left-panel">
+                <h1>Deep Dive: Specialist Router</h1>
+                 <div class="chat-log-wrapper">
+                    <div id="router-chat-log"></div>
+                </div>
+                <div id="router-input-area"></div>
+            </div>
+            <div class="right-panel">
+                <h2>Live Internal Systems</h2>
+                <div id="router-diagram" class="diagram-container">
+                     <div id="r-chief-coord" class="diagram-component" style="top: 2%; left: 50%; transform: translateX(-50%); width: 220px;"><strong>🤖 Chief Coordinator</strong><span>(Caller)</span></div>
+                    <div id="r-router-agent" class="diagram-component" style="top: 25%; left: 50%; transform: translateX(-50%); width: 220px;"><strong>🧠 Specialist Router</strong><span>Sub-Agent</span></div>
+                    <div id="r-llm-brain" class="diagram-component" style="top: 50%; left: 50%; transform: translateX(-50%); width: 180px;"><strong>🔥 LLM Brain</strong><span>(Gemini)</span></div>
+                    <div class="diagram-component" style="top: 75%; left: 50%; transform: translateX(-50%); width: 100%; display: flex; justify-content: center; gap: 15px; border: none; background: none; box-shadow: none;">
+                        <div id="r-cardiology" class="diagram-component" style="position: static; transform: none; width: 150px;"><strong>❤️ Cardiology</strong></div>
+                        <div id="r-neurology" class="diagram-component" style="position: static; transform: none; width: 150px;"><strong>🧠 Neurology</strong></div>
+                        <div id="r-general" class="diagram-component" style="position: static; transform: none; width: 150px;"><strong>⚕️ General Medicine</strong></div>
+                    </div>
+                    <svg id="router-svg" class="svg-container"></svg>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- UTILITY FUNCTIONS ---
+        function getEl(id) { return document.getElementById(id); }
+        function show(el) { el.style.display = 'flex'; }
+        function hide(el) { el.style.display = 'none'; }
+
+        // --- UI & ANIMATION LOGIC ---
+        async function addMessage(logId, speaker, text, type) {
+            const log = getEl(logId);
+            const wrapper = log.parentElement;
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            messageDiv.innerHTML = `<span class="speaker">${speaker}</span><div>${text}</div>`;
+            log.appendChild(messageDiv);
+            wrapper.scrollTop = wrapper.scrollHeight;
+            await new Promise(r => setTimeout(r, 200));
+        }
+
+        function showButton(areaId, text, action) {
+            const area = getEl(areaId);
+            area.innerHTML = '';
+            const button = document.createElement('button');
+            button.innerText = text;
+            button.className = 'action-button';
+            button.onclick = () => { button.classList.add('disabled'); action(); };
+            area.appendChild(button);
+        }
+
+        function setGlow(diagramId, componentId, type, isActive = true) {
+            getEl(diagramId).querySelectorAll('.diagram-component').forEach(el => el.classList.remove('glowing', 'agent-glow', 'tool-glow', 'sub-agent-glow', 'llm-glow', 'db-glow'));
+            if (isActive && componentId) {
+                getEl(componentId).classList.add('glowing', `${type}-glow`);
+            }
+        }
+        
+        function setMultipleGlows(diagramId, componentIds, type) {
+             getEl(diagramId).querySelectorAll('.diagram-component').forEach(el => el.classList.remove('glowing', 'agent-glow', 'tool-glow', 'sub-agent-glow', 'llm-glow', 'db-glow'));
+             componentIds.forEach(id => {
+                const el = getEl(id);
+                if(el) el.classList.add('glowing', `${type}-glow`);
+            });
+        }
+
+        function animatePath(svgId, pathId, isActive = true) {
+            getEl(svgId).querySelectorAll('.flow-line').forEach(p => p.classList.remove('animate'));
+            if (isActive && pathId) {
+                getEl(pathId)?.classList.add('animate');
+            }
+        }
+
+        function getElementCenter(diagramId, componentId) {
+            const el = getEl(componentId);
+            const rect = el.getBoundingClientRect();
+            const containerRect = getEl(diagramId).getBoundingClientRect();
+            return { x: rect.left - containerRect.left + rect.width / 2, y: rect.top - containerRect.top + rect.height / 2 };
+        }
+
+        function createPath(svgId, pathId, startId, endId, curve = 80) {
+            const svg = getEl(svgId);
+            const diagramId = svg.parentElement.id;
+            const start = getElementCenter(diagramId, startId);
+            const end = getElementCenter(diagramId, endId);
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', `M${start.x},${start.y} C${start.x},${start.y + curve} ${end.x},${end.y - curve} ${end.x},${end.y}`);
+            path.setAttribute('id', pathId);
+            path.setAttribute('class', 'flow-line');
+            svg.appendChild(path);
+        }
+        
+        function createMultiPath(svgId, pathId, startId, endIds) {
+            const svg = getEl(svgId);
+            const diagramId = svg.parentElement.id;
+            const start = getElementCenter(diagramId, startId);
+            const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            group.setAttribute('id', pathId);
+            endIds.forEach(endId => {
+                const end = getElementCenter(diagramId, endId);
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', `M${start.x},${start.y} C${start.x},${start.y + 80} ${end.x},${end.y - 80} ${end.x},${end.y}`);
+                path.setAttribute('class', 'flow-line');
+                group.appendChild(path);
+            });
+            svg.appendChild(group);
+        }
+
+
+        // --- DEMO STATE & LOGIC ---
+        let mainFlowStep = 0;
+        let ehrFlowStep = 0;
+        let routerFlowStep = 0;
+
+        const MAIN_DEMO = [
+            { setup: async () => {
+                await addMessage('main-chat-log', 'ℹ️ System', 'Welcome to the ClinicOS Master Blueprint. You are Dr. Aris. Click "Begin Case" to start.', 'thinking');
+                showButton('main-input-area', 'Begin Case', () => runMainStep(1));
+            }},
+            { action: async () => {
+                setGlow('main-diagram', 'm-human-op', 'human');
+                await addMessage('main-chat-log', '👩‍⚕️ Dr. Aris', 'Patient Yasmine Fihri is here. She was treated for hypertension last month and now complains of persistent headaches.', 'human');
+                showButton('main-input-area', 'Send to Chief Coordinator', () => runMainStep(2));
+            }},
+            { action: async () => {
+                animatePath('main-svg', 'path-m-human-chief');
+                setGlow('main-diagram', 'm-chief-coord', 'agent');
+                await addMessage('main-chat-log', '🧠 Agent Monologue', 'New case for a returning patient. Protocol requires a full historical briefing. I must delegate this to my EHR Secretary tool.', 'thinking');
+                showButton('main-input-area', 'Enter EHR Secretary Deep Dive', () => { show(getEl('ehr-modal')); runEHRStep(0); });
+            }},
+            { action: async () => {
+                await addMessage('main-chat-log', '✅ Tool Result', 'EHR Secretary has returned a complete patient briefing.', 'tool');
+                await addMessage('main-chat-log', '🧠 Agent Monologue', 'Briefing received. The context of hypertension is critical. I will now log the new visit and then route the case to specialists.', 'thinking');
+                showButton('main-input-area', 'Enter Specialist Router Deep Dive', () => { show(getEl('router-modal')); runRouterStep(0); });
+            }},
+            { action: async () => {
+                await addMessage('main-chat-log', '✅ Tool Result', 'Specialist consultation is complete. The individual reports have been received.', 'tool');
+                setGlow('main-diagram', 'm-consensus-agent', 'sub-agent');
+                animatePath('main-svg', 'path-m-chief-consensus');
+                await addMessage('main-chat-log', '🤖 Chief Coordinator', 'I am now synthesizing the specialist findings into a single, actionable report.', 'agent');
+                await new Promise(r => setTimeout(r, 2000));
+                runMainStep(5);
+            }},
+            { action: async () => {
+                setGlow('main-diagram', 'm-chief-coord', 'agent');
+                animatePath('main-svg', null, false);
+                const report = `Here is the final report:<br><br>
+                🧾 <strong>Patient Summary:</strong> Patient with known hypertension presents with persistent headaches.<br>
+                🔍 <strong>Top Diagnoses:</strong> 1. Hypertensive Headache (85%), 2. Tension Headache (70%)<br>
+                📋 <strong>Next Steps:</strong> Immediate blood pressure check is the priority.`;
+                await addMessage('main-chat-log', '🤖 Chief Coordinator', report, 'agent');
+                showButton('main-input-area', 'Approve & Sign Off', () => runMainStep(6));
+            }},
+             { action: async () => {
+                setGlow('main-diagram', 'm-doctor-review', 'tool');
+                animatePath('main-svg', 'path-m-chief-review');
+                await addMessage('main-chat-log', '👩‍⚕️ Dr. Aris', 'Report approved. Finalize the case.', 'human');
+                await addMessage('main-chat-log', '🤖 Chief Coordinator', 'Acknowledged. Logging the final, signed-off report to the audit trail.', 'agent');
+                await new Promise(r => setTimeout(r, 1500));
+                runMainStep(7);
+            }},
+            { action: async () => {
+                setGlow('main-diagram', null, null, false);
+                animatePath('main-svg', null, false);
+                await addMessage('main-chat-log', '✅ System', 'Case Closed. The system is ready for a new mission.', 'thinking');
+                showButton('main-input-area', 'Restart Master Demo', () => { getEl('main-chat-log').innerHTML = ''; runMainStep(0); });
+            }}
+        ];
+
+        const EHR_DEMO = [
+            { setup: async () => {
+                getEl('ehr-chat-log').innerHTML = '';
+                setGlow('ehr-diagram', 'e-chief-coord', 'chief');
+                await addMessage('ehr-chat-log', '▶️ INCOMING COMMAND', `<pre><code>{\n  "action": "get_patient_briefing",\n  "identifier": "Yasmine Fihri"\n}</code></pre>`, 'command');
+                showButton('ehr-input-area', 'Accept Task', () => runEHRStep(1));
+            }},
+            { action: async () => {
+                animatePath('ehr-svg', 'path-e-chief-ehr');
+                setGlow('ehr-diagram', 'e-ehr-agent', 'tool');
+                await addMessage('ehr-chat-log', '📋 EHR Monologue', 'Briefing request received. My logic is: 1. Search Patients sheet. 2. Search Visits sheet. 3. Assemble results.', 'monologue');
+                showButton('ehr-input-area', 'Execute Step 1: Search Patients', () => runEHRStep(2));
+            }},
+            { action: async () => {
+                animatePath('ehr-svg', 'path-e-ehr-logic'); setGlow('ehr-diagram', 'e-ehr-logic', 'logic'); await new Promise(r => setTimeout(r, 500));
+                animatePath('ehr-svg', 'path-e-logic-patients'); setGlow('ehr-diagram', 'e-patients-sheet', 'db');
+                await addMessage('ehr-chat-log', '⚙️ Internal Logic', 'Querying `Patients Sheet` for "Yasmine Fihri"...', 'response');
+                await new Promise(r => setTimeout(r, 1500));
+                await addMessage('ehr-chat-log', '⚙️ Internal Logic', 'Result: Found Patient ID "P48152".', 'response');
+                showButton('ehr-input-area', 'Execute Step 2: Search Visits', () => runEHRStep(3));
+            }},
+            { action: async () => {
+                animatePath('ehr-svg', 'path-e-ehr-logic'); setGlow('ehr-diagram', 'e-ehr-logic', 'logic'); await new Promise(r => setTimeout(r, 500));
+                animatePath('ehr-svg', 'path-e-logic-visits'); setGlow('ehr-diagram', 'e-visits-sheet', 'db');
+                await addMessage('ehr-chat-log', '⚙️ Internal Logic', 'Querying `Visits Sheet` for patient ID "P48152"...', 'response');
+                await new Promise(r => setTimeout(r, 1500));
+                await addMessage('ehr-chat-log', '⚙️ Internal Logic', 'Result: Found 2 past visits. Assembling final briefing.', 'response');
+                showButton('ehr-input-area', 'Return Briefing to Coordinator', () => runEHRStep(4));
+            }},
+            { action: async () => {
+                animatePath('ehr-svg', 'path-e-chief-ehr'); setGlow('ehr-diagram', 'e-ehr-agent', 'tool');
+                const response = `<pre><code>{\n  "status": "BRIEFING_COMPLETE",\n  ...data...\n}</code></pre>`;
+                await addMessage('ehr-chat-log', '◀️ RESPONSE SENT', response, 'response');
+                await new Promise(r => setTimeout(r, 1000));
+                hide(getEl('ehr-modal')); runMainStep(3);
+            }}
+        ];
+
+        const ROUTER_DEMO = [
+            { setup: async () => {
+                getEl('router-chat-log').innerHTML = '';
+                setGlow('router-diagram', 'r-chief-coord', 'chief');
+                const context = `Patient has a known history of Hypertension and now presents with a new complaint of 'persistent headaches for three days'.`;
+                await addMessage('router-chat-log', '▶️ INCOMING COMMAND', `<pre><code>{\n  "action": "route_to_specialists",\n  "patient_context": "${context}"\n}</code></pre>`, 'command');
+                showButton('router-input-area', 'Accept Task', () => runRouterStep(1));
+            }},
+            { action: async () => {
+                animatePath('router-svg', 'path-r-chief-router'); setGlow('router-diagram', 'r-router-agent', 'sub-agent');
+                await addMessage('router-chat-log', '🧠 Router Monologue', 'Routing request received. Context is complex: "headache" + "hypertension". I will query my LLM Brain for an intelligent decision.', 'monologue');
+                showButton('router-input-area', 'Query LLM Brain', () => runRouterStep(2));
+            }},
+            { action: async () => {
+                animatePath('router-svg', 'path-r-router-llm'); setGlow('router-diagram', 'r-llm-brain', 'llm');
+                await addMessage('router-chat-log', '🔥 Querying LLM', 'Sending full context to Gemini for analysis...', 'response');
+                await new Promise(r => setTimeout(r, 2000));
+                await addMessage('router-chat-log', '🧠 Router Monologue', 'LLM analysis complete. It recommends Neurology, Cardiology, and General Medicine due to the interconnected symptoms.', 'monologue');
+                showButton('router-input-area', 'Call Specialists & Return Reports', () => runRouterStep(3));
+            }},
+            { action: async () => {
+                const specialists = ['r-neurology', 'r-cardiology', 'r-general'];
+                animatePath('router-svg', 'path-r-router-specialists');
+                setMultipleGlows('router-diagram', specialists, 'specialist');
+                await addMessage('router-chat-log', '🚀 Executing Consultation', 'Calling all 3 specialists simultaneously...', 'response');
+                await new Promise(r => setTimeout(r, 1500));
+                await addMessage('router-chat-log', '🧠 Neurology Report', 'Findings: Headache could be primary, but must rule out Hypertensive Crisis.', 'tool');
+                await new Promise(r => setTimeout(r, 1000));
+                await addMessage('router-chat-log', '❤️ Cardiology Report', 'Findings: Uncontrolled BP is a common cause of headaches. Check BP immediately.', 'tool');
+                await new Promise(r => setTimeout(r, 1000));
+                 await addMessage('router-chat-log', '⚕️ General Medicine Report', 'Findings: Concur with both. BP check is the priority.', 'tool');
+                showButton('router-input-area', 'Return Consultation to Coordinator', () => runRouterStep(4));
+            }},
+             { action: async () => {
+                animatePath('router-svg', 'path-r-chief-router'); setGlow('router-diagram', 'r-router-agent', 'sub-agent');
+                const response = `<pre><code>{\n  "status": "CONSULTATION_COMPLETE",\n  "reports": [...] \n}</code></pre>`;
+                await addMessage('router-chat-log', '◀️ RESPONSE SENT', response, 'response');
+                await new Promise(r => setTimeout(r, 1000));
+                hide(getEl('router-modal')); runMainStep(4);
+            }}
+        ];
+
+        function runMainStep(step) { mainFlowStep = step; MAIN_DEMO[step].action(); }
+        function runEHRStep(step) { ehrFlowStep = step; (EHR_DEMO[step].action || EHR_DEMO[step].setup)(); }
+        function runRouterStep(step) { routerFlowStep = step; (ROUTER_DEMO[step].action || ROUTER_DEMO[step].setup)(); }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            // Main Diagram
+            createPath('main-svg', 'path-m-human-chief', 'm-human-op', 'm-chief-coord');
+            createPath('main-svg', 'path-m-chief-ehr', 'm-chief-coord', 'm-ehr-secretary');
+            createPath('main-svg', 'path-m-chief-router', 'm-chief-coord', 'm-specialist-router');
+            createPath('main-svg', 'path-m-chief-consensus', 'm-chief-coord', 'm-consensus-agent');
+            createPath('main-svg', 'path-m-chief-review', 'm-chief-coord', 'm-doctor-review');
+            // EHR Diagram
+            createPath('ehr-svg', 'path-e-chief-ehr', 'e-chief-coord', 'e-ehr-agent');
+            createPath('ehr-svg', 'path-e-ehr-logic', 'e-ehr-agent', 'e-ehr-logic');
+            createPath('ehr-svg', 'path-e-logic-patients', 'e-ehr-logic', 'e-patients-sheet');
+            createPath('ehr-svg', 'path-e-logic-visits', 'e-ehr-logic', 'e-visits-sheet');
+            // Router Diagram
+            createPath('router-svg', 'path-r-chief-router', 'r-chief-coord', 'r-router-agent');
+            createPath('router-svg', 'path-r-router-llm', 'r-router-agent', 'r-llm-brain');
+            createMultiPath('router-svg', 'path-r-router-specialists', 'r-router-agent', ['r-cardiology', 'r-neurology', 'r-general']);
+
+            MAIN_DEMO[0].setup();
+        });
+
+    </script>
+</body>
+</html>
